@@ -6,9 +6,10 @@ import pretrainedmodels
 import pretrainedmodels.utils as utils
 import torch
 import torch.nn.functional as F
+from torch.utils import data
 from sklearn.metrics import r2_score
-from torch import nn
-from torch.optim import Adam
+from torch import nn, optim
+from torch.optim import lr_scheduler
 
 
 class Classifier(nn.Module):
@@ -49,36 +50,50 @@ for image_index in range(1, 13):
     image = transform_image(image)
 
     images.append(image)
-
 images = torch.stack(images, dim=0)
-images = torch.autograd.Variable(images.cuda())
 
 labels = np.genfromtxt('scents.csv', delimiter='\t', skip_header=1)[:12, 1:]
-labels = torch.autograd.Variable(torch.FloatTensor(labels).cuda())
 for index in range(len(labels)):
-    labels[index] = labels[index] / torch.max(labels)
+    labels[index] = labels[index] / max(labels[index])
+labels = torch.FloatTensor(labels)
 
-optimizer = Adam(classifier_model.parameters())
+dataset = data.TensorDataset(images, labels)
+loader = data.DataLoader(dataset, batch_size=4)
+
+optimizer = optim.SGD(classifier_model.parameters(), lr=0.1, momentum=0.9)
+scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 
 class_labels = "citrus	floral	fruity	woody	oriental	musk	aromatic	water	mossy	green".split(
     "\t")
 
 # Train.
 
-for epoch in range(1000):
-    outputs = classifier_model(features_model.features(images))
+classifier_model.train()
 
-    loss = criterion(outputs, labels)
+for epoch in range(150):
+    total_loss = 0
+    for (batch_images, batch_labels) in loader:
+        batch_images, batch_labels = torch.autograd.Variable(batch_images.cuda()), torch.autograd.Variable(batch_labels.cuda())
+        outputs = classifier_model(features_model.features(batch_images))
 
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+        loss = criterion(outputs, batch_labels)
 
-    print(loss.cpu().data[0])
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.cpu().data[0]
+
+    total_loss /= images.size()[0]
+    print("[Epoch %d] Loss: %.8f" % (epoch, total_loss))
+
+    scheduler.step(total_loss)
 
 # Test.
 
-outputs = classifier_model(features_model.features(images))
+classifier_model.eval()
+
+outputs = classifier_model(features_model.features(torch.autograd.Variable(images.cuda())))
 for predicted_label in outputs:
     label_probs, label_indices = torch.topk(predicted_label, 3)
     label_probs = label_probs.cpu().data.numpy()
@@ -89,7 +104,7 @@ for predicted_label in outputs:
     print()
 
 outputs = outputs.cpu().data.numpy()
-labels = labels.cpu().data.numpy()
+labels = labels.cpu().numpy()
 
 for i in range(len(outputs)):
     outputs[i] = outputs[i] + abs(min(outputs[i]))

@@ -39,15 +39,10 @@ classifier_model.cuda()
 load_image = utils.LoadImage()
 transform_image = utils.TransformImage(features_model)
 
-labels = np.genfromtxt('scents.csv', delimiter='\t', skip_header=1)[:12, 1:]
-labels = torch.autograd.Variable(torch.FloatTensor(labels).cuda())
-for index in range(len(labels)):
-    labels[index] = labels[index] / torch.max(labels)
-
 class_labels = "citrus	floral	fruity	woody	oriental	musk	aromatic	water	mossy	green".split(
     "\t")
 
-image = load_image('test/Screen Shot 2018-03-13 at 7.38.10 PM.png')
+image = load_image('test/Screen Shot 2018-03-13 at 7.56.47 PM.png')
 image = transform_image(image)
 
 image = torch.autograd.Variable(image.unsqueeze(0).cuda())
